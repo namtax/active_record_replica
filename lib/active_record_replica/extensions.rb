@@ -58,8 +58,13 @@ module ActiveRecordReplica
     def active_record_replica_read_from_primary?
       # Read from primary when forced by thread variable, or
       # in a transaction and not ignoring transactions
-      ActiveRecordReplica.read_from_primary? ||
-        (open_transactions > 0) && !ActiveRecordReplica.ignore_transactions?
+      begin
+        Replica.connection
+      rescue => e 
+        return true
+      end
+
+      ActiveRecordReplica.read_from_primary? || (open_transactions > 0) && !ActiveRecordReplica.ignore_transactions?
     end
   end
 end
