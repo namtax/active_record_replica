@@ -52,116 +52,96 @@ describe ActiveRecordReplica do
   ActiveRecord::Base.logger = Logger.new(STDOUT)
 
   describe 'the active_record_replica gem' do
+    let(:user)    { User.new(:name => name, :address => address) }
+    let(:name)    { "Joe Bloggs" }
+    let(:address) { "Somewhere" }
+
     before do
       ActiveRecordReplica.ignore_transactions = false
       ActiveRecord::Base.establish_connection(:test)
-
-      @name    = "Joe Bloggs"
-      @address = "Somewhere"
     end
 
-    # it 'saves to primary' do
-    #   assert_equal true, @user.save!
-    # end
+    it 'saves to primary' do
+      expect(user.save!).to be_truthy
+    end
 
-    #
-    # NOTE:
-    #
-    #   There is no automated replication between the SQL lite databases
-    #   so the tests will be verifying that reads going to the "replica" (second)
-    #   database do not find data written to the primary.
-    #
-    # it 'saves to primary, read from replica' do
-    #   # Read from replica
-    #   expect(User.where(:name => @name, :address => @address).count).to eq(0)
+    it 'saves to primary, read from replica' do
+      expect(User.where(:name => name, :address => address).count).to eq(0)
+      expect(user.save!).to be_truthy
+      connect_to_slave
+      expect(User.where(:name => name, :address => address).count).to eq(1)
+    end
 
-    #   # Write to primary
-    #   expect(@user.save!).to be_truthy
+    it 'save to primary, read from primary when in a transaction' do
+      expect(ActiveRecordReplica.ignore_transactions?).to be_falsey
 
-    #   # Read from replica
-    #   expect(User.where(:name => @name, :address => @address).count).to eq(0)
-    # end
+      User.transaction do
+        expect(User.count).to eq(0)
+        expect(User.where(:name => name, :address => address).count).to eq(0)
+        expect(user.save!).to be_truthy
+        expect(User.where(:name => name, :address => address).count).to eq(1)
+      end
 
-    # it 'save to primary, read from primary when in a transaction' do
-    #   assert_equal false, ActiveRecordReplica.ignore_transactions?
+      connect_to_slave
+      expect(User.where(:name => name, :address => address).count).to eq(1)
+    end
 
-    #   User.transaction do
-    #     # The delete_all in setup should have cleared the table
-    #     assert_equal 0, User.count
+    context 'ignoring transactions' do
+      before do
+        ActiveRecordReplica.ignore_transactions = false
+      end
+      
+      it 'save to primary, read from replica when ignoring transactions' do
+        expect(ActiveRecordReplica.ignore_transactions?).to be_truthy
 
-    #     # Read from Primary
-    #     assert_equal 0, User.where(:name => @name, :address => @address).count
+        User.transaction do
+          expect(User.count).to eq(0)
+          expect(User.where(:name => name, :address => address).count).to eq(0)
+          expect(user.save!).to be_truthy
+          expect(User.where(:name => name, :address => address).count).to eq(0)
+        end
 
-    #     # Write to primary
-    #     assert_equal true, @user.save!
-
-    #     # Read from Primary
-    #     assert_equal 1, User.where(:name => @name, :address => @address).count
-    #   end
-
-    #   # Read from Non-replicated replica
-    #   assert_equal 0, User.where(:name => @name, :address => @address).count
-    # end
-
-    # it 'save to primary, read from replica when ignoring transactions' do
-    #   ActiveRecordReplica.ignore_transactions = true
-    #   assert_equal true, ActiveRecordReplica.ignore_transactions?
-
-    #   User.transaction do
-    #     # The delete_all in setup should have cleared the table
-    #     assert_equal 0, User.count
-
-    #     # Read from Primary
-    #     assert_equal 0, User.where(:name => @name, :address => @address).count
-
-    #     # Write to primary
-    #     assert_equal true, @user.save!
-
-    #     # Read from Non-replicated replica
-    #     assert_equal 0, User.where(:name => @name, :address => @address).count
-    #   end
-
-    #   # Read from Non-replicated replica
-    #   assert_equal 0, User.where(:name => @name, :address => @address).count
-    # end
+        expect(User.where(:name => name, :address => address).count).to eq(1)
+      end
+    end
 
     # it 'saves to primary, force a read from primary even when _not_ in a transaction' do
     #   # Read from replica
-    #   assert_equal 0, User.where(:name => @name, :address => @address).count
+    #   assert_equal 0, User.where(:name => name, :address => address).count
 
     #   # Write to primary
     #   assert_equal true, @user.save!
 
     #   # Read from replica
-    #   assert_equal 0, User.where(:name => @name, :address => @address).count
+    #   assert_equal 0, User.where(:name => name, :address => address).count
 
     #   # Read from Primary
     #   ActiveRecordReplica.read_from_primary do
-    #     assert_equal 1, User.where(:name => @name, :address => @address).count
+    #     assert_equal 1, User.where(:name => name, :address => address).count
     #   end
     # end
 
     context 'slave is responsive' do
-      let(:user) { User.new(:name => @name, :address => @address) }
+      let(:user) { User.new(:name => name, :address => address) }
 
       it 'reads from primary' do
         expect(user.save!).to be_truthy
-        expect(User.where(:name => @name, :address => @address).count).to eq(1)      
+        expect(User.where(:name => name, :address => address).count).to eq(1)      
       end
     end
 
     context 'slave is unresponsive' do
-      let(:user) { User.new(:name => @name, :address => @address) }
+      let(:user) { User.new(:name => name, :address => address) }
 
       it 'reads from primary' do
         expect(user.save!).to be_truthy
         allow(ActiveRecordReplica::Replica).to receive(:connection).and_raise(StandardError)
-        expect(User.where(:name => @name, :address => @address).count).to eq(1)      
+        expect(User.where(:name => name, :address => address).count).to eq(1)      
       end
     end
 
     context 'slave enabled post application boot' do
-      let(:user) { User.new(:name    => @name, :address => @address) }
+      let(:user) { User.new(:name    => name, :address => address) }
       
       before do
         ActiveRecord::Base.configurations = YAML::load(ERB.new(IO.read('test/database_replica.yml')).result)
@@ -169,22 +149,30 @@ describe ActiveRecordReplica do
 
       it 'reads from slave' do
         expect(user.save!).to be_truthy
-        expect(User.where(:name => @name, :address => @address).count).to eq(0)
+        expect(User.where(:name => name, :address => address).count).to eq(0)
         ActiveRecord::Base.configurations = YAML::load(ERB.new(IO.read('test/database.yml')).result)
         expect(user.save!).to be_truthy
-        expect(User.where(:name => @name, :address => @address).count).to eq(1)
+        expect(User.where(:name => name, :address => address).count).to eq(1)
       end
     end
 
     after do
-      ActiveRecord::Base.establish_connection(:test)
+      connect_to_primary
       cleanup
-      ActiveRecord::Base.establish_connection(ActiveRecord::Base.configurations['test']['slave'])
+      connect_to_slave
       cleanup
     end
 
     def cleanup
       User.delete_all
+    end
+
+    def connect_to_primary
+      ActiveRecord::Base.establish_connection(:test)
+    end
+
+    def connect_to_slave
+      ActiveRecord::Base.establish_connection(ActiveRecord::Base.configurations['test']['slave'])
     end
   end
 end

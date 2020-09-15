@@ -6,7 +6,7 @@ gem 'pry'
 gem 'rake'
 gem 'minitest'
 gem 'awesome_print'
-gem 'rspec'
+# gem 'rspec'
 
 gem 'sqlite3', '~> 1.3.0', platform: :ruby
 gem 'jdbc-sqlite3', platform: :jruby
